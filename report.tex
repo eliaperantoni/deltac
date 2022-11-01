@@ -1,0 +1,197 @@
+\documentclass[paper=a4, fontsize=11pt]{scrartcl}
+\usepackage[T1]{fontenc}
+\usepackage{fourier}
+
+\usepackage[english]{babel}
+\usepackage[protrusion=true,expansion=true]{microtype} 
+\usepackage{amsmath,amsfonts,amsthm}
+\usepackage[pdftex]{graphicx} 
+\usepackage{url}
+
+\usepackage{tikz} 
+
+\usepackage{parskip}
+
+\usepackage[outputdir=out]{minted}
+\usemintedstyle{tango}
+
+\newtheorem{proposition}{Proposition}
+
+\usepackage{sectsty}
+\allsectionsfont{\centering \normalfont\scshape}
+\usepackage{fancyhdr}
+\pagestyle{fancyplain}
+\fancyhead{}
+\fancyfoot[L]{}
+\fancyfoot[C]{}
+\fancyfoot[R]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+\setlength{\headheight}{13.6pt}
+
+\numberwithin{equation}{section}
+\numberwithin{figure}{section}
+\numberwithin{table}{section}
+
+\newcommand{\horrule}[1]{\rule{\linewidth}{#1}}
+
+\title{
+    \usefont{OT1}{bch}{b}{n}
+    \normalfont \normalsize \textsc{Università degli Studi di Verona} \\ [15pt]
+    Master's degree in computer science and engineering / Big Data \\ [15pt]
+    \horrule{0.5pt} \\[0.4cm]
+    \huge Counting the number of triangles in a very large graph using the TTP algorithm \\
+    \horrule{2pt} \\[0.5cm]
+}
+\author{
+    \normalfont \normalsize
+    Elia Perantoni, VR472361
+    \\[-3pt] \normalsize \today
+}
+\date{}
+
+\begin{document}
+\maketitle
+\section{Introduction}
+A triangle $\Delta(u, v, x)$ in a undirected graph $G=(V, E)$ is a triple of
+nodes $u, v, x$ such that all edges between them are in $E$. That is: $\{(u,v),
+(u,x), (v, x)\}\subseteq E$.
+
+\begin{figure}[htb]
+    \centering
+    \begin{tikzpicture}[node distance={15mm}, thick, every node/.style={draw, circle, minimum size=22pt}]
+        \node (u) {$u$}; 
+        \node (v) [below left of=u] {$v$}; 
+        \node (x) [below right of=u] {$x$};
+        \draw (u) -- (v) -- (x) -- (u);
+        \node (a) [left of=v] {$a$};
+        \node (b) [below left of=a] {$b$};
+        \node (c) [below right of=x] {$c$};
+        \draw (v) -- (a) -- (b);
+        \draw (x) -- (c);
+    \end{tikzpicture}
+    \caption{A triangle $\Delta(u, v, x)$ inside a larger graph}
+\end{figure}
+
+The problem of counting triangles in a graph inherits great importance from
+several interesting metrics on graphs that build upon it. The clustering
+coefficient, for instance, is a measure of the degree to which nodes in a graph
+tend to cluster together. Evidence suggests that real world graphs, social
+networks in particular, tend to create tightly knit groups characterised by a
+relatively high density of ties. This metric, arguably a very insightful one,
+requires the number of triangles to be known, in order to compute it. Hence, its
+relevance.
+
+In recent years, internal and external memory algorithms have been developed to
+solve the problem of triangle counting; but some of the graphs that we wish to
+analyse have become so large that they can no longer fit inside a single
+machine.
+
+A popular technique for distributed computation is \emph{Map-Reduce}: a
+\emph{map} function is applied to each element in the input collection
+individually to produce key-value pairs, the shuffle phase then merges all
+values belonging to the same key and, finally, a \emph{reduce} function is
+applied to each group of values (one for each key) to produce the final result.
+What makes Map-Reduce so powerful is the fact that data can be split in
+partitions to which the map and reduce functions can be applied independently.
+With this mechanism, processing enormous quantities of data becomes possible as
+the work can be distributed among a large number of machines.
+
+This report comes with, and provides context to, a Jupyter notebook in which a
+recently developed Map-Reduce algorithm known as \emph{TTP (Triangle Type
+Partition)} is implemented, tested, analysed and compared with one of its
+predecessor: \emph{GP (Graph Partition)}.
+
+We will first be introducing and discussing GP before moving to TTP because the
+two algorithms have many concepts in common but GP is easier to understand.
+
+\section{The tools}
+Arguably, the most known Map-Reduce implementation is \emph{Apache Hadoop},
+which also provides a distributed file system for data persistence: \emph{HDFS
+(Hadoop Distribtued File System)}. However, using Hadoop is somewhat tedious as
+the provided functionality is limited to plain Map-Reduce only. Also, HDFS comes
+with sup-optimal performance as secondary storage is used.
+
+\emph{Apache Spark} is a software based on Hadoop that provides the framework
+and unified set of APIs for peforming a wide range of distributed computation
+operations that go beyond just simple Map-Reduce. Spark also improves on HDFS by
+using what's known as: \emph{RDD (Resilient Distributed Dataset)}. It's a
+managed data structure that gets sharded and distributed (possibly with
+replication) among the machines belonging to the same cluster. What's different
+from HDFS is that RDDs' shards are stored in internal memory, thus noticeably
+improving the performance of read/write operations.
+
+Our implementation is Apache Spark based.
+
+\section{Graph Partition algorithm}
+In GP, the input graph $G=(V, E)$ is split into $\rho$ partitions ($G_0, G_1,
+\dots, G_{\rho-1}$) using a partitioning function $P$ such that $\forall u \in V
+\ldotp P(u) \in [0, \rho-1]$. This gives $V=\bigcup_{i=0}^{\rho-1} V_i$
+and $\forall_{i\neq j} \ldotp V_i \cap V_j = \emptyset$.
+
+Then, the algorithm finds the triangles in every 3-partition $G_{ijk}$ with $0
+\le i < j < k \le \rho - 1$ and assigns a weight to each. The sum of weights
+across all partitions will give the correct number of triangles in $G$.
+
+Because some triangles are seen in more than one 3-partition, the purpose of
+the weight system is to counteract this effect; ensuring that the weights
+emitted for a given triangle always sum up to $1$. Take a triangle $\Delta(u, v,
+x)$ entirely contained within partition $G_0=(V_0, E_0)$ for instance
+($\{u,v,x\} \subseteq V_0$), it will be observed repeatedly in any 3-partition
+$G_{0jk}$ with $j,k\neq 0$.
+
+The correct weight for a triangle can be found just by looking at the partitions
+that its nodes belong to:
+\[
+    W(\Delta(u,v,x)) = \begin{cases}
+        \frac{1}{\binom{\rho-1}{2}} & P(u) = P(v) = P(x)  \\
+        \frac{1}{\rho-2} & P(u) = P(v) \vee P(v) = P(x) \vee P(u) = P(x) \\
+        1 & \text{otherwise}
+    \end{cases}
+\]
+
+\begin{proposition}
+    The sum of weights emitted by GP for any given triangle $\Delta(u, v, x)$ is $1$.
+\end{proposition}
+\begin{proof}
+    One of these cases must be true:
+    \begin{enumerate}
+        \item $\Delta(u, v, x)$ is entirely contained within a single partition $G_A$
+        \item $\Delta(u, v, x)$ is entirely contained within two partitions $G_A$ and $G_B$
+        \item $\Delta(u, v, x)$ spans three partitions $G_A$, $G_B$ and $G_C$
+        with each node belonging to a different one
+    \end{enumerate}
+    Therefore, we proceed with a proof by cases:
+    \begin{enumerate}
+        \item $\Delta(u, v, x)$ appears in any 3-partition $G_{Ajk}$
+        with $j\neq A \wedge k\neq A$. This means
+        choosing $j,k$ among $\rho-1$ possible values, hence:
+        $\binom{\rho-1}{2}$. Because there are $\binom{\rho-1}{2}$ 3-partitions
+        in which the triangle appears, a weight of $\frac{1}{\binom{\rho-1}{2}}$
+        ensures that $\binom{\rho-1}{2}* \frac{1}{\binom{\rho-1}{2}} = 1$.
+        \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ABk}$ with $k
+        \neq A \wedge k \neq B$. This means choosing $k$ among $\rho-2$ possible
+        values. Because there are ($\rho-2$) 3-partitions in which the triangle
+        appears, a weight of $\frac{1}{\rho-2}$ ensures that
+        $(\rho-2)*\frac{1}{\rho-2}=1$.
+        \item $\Delta(u, v, x)$ appears just in $G_{ABC}$. The weight $1$ will
+        be emitted just once, trivially making the sum equal to $1$.
+    \end{enumerate}
+\end{proof}
+
+The distributed nature of GP emerges when observing that each 3-partition can be
+processed independently using an internal memory algorithm. This step acts
+as a \emph{map} function, while summing the weights can be thought of as a
+\emph{reduce} step.
+
+Depending on the size of $G$, a sufficiently large number of partitions ($\rho$)
+will make sure that each is sufficiently small to fit inside a single machine.
+
+\section{Triangle Type Partition algorithm}
+
+\section{Implementation explained}
+
+\section{Impact of $\rho$}
+
+\section{Performance comparision TTP vs GP}
+\end{document}
