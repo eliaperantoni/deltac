@@ -4,7 +4,7 @@
 
 \usepackage[english]{babel}
 \usepackage[protrusion=true,expansion=true]{microtype} 
-\usepackage{amsmath,amsfonts,amsthm}
+\usepackage{amsmath,amsfonts,amsthm,amssymb}
 \usepackage[pdftex]{graphicx} 
 \usepackage{url}
 
@@ -99,8 +99,9 @@ the work can be distributed among a large number of machines.
 
 This report comes with, and provides context to, a Jupyter notebook in which a
 recently developed Map-Reduce algorithm known as \emph{TTP (Triangle Type
-Partition)} is implemented, tested, analysed and compared with one of its
-predecessor: \emph{GP (Graph Partition)}.
+Partition)} \cite{park2013efficient} is implemented, tested, analysed and
+compared with one of its predecessor: \emph{GP (Graph Partition)}
+\cite{suri2011counting}.
 
 We will first be introducing and discussing GP before moving to TTP because the
 two algorithms have many concepts in common but GP is easier to understand.
@@ -124,14 +125,19 @@ improving the performance of read/write operations.
 Our implementation is Apache Spark based.
 
 \section{Graph Partition algorithm}
-In GP, the input graph $G=(V, E)$ is split into $\rho$ partitions ($G_0, G_1,
-\dots, G_{\rho-1}$) using a partitioning function $P$ such that $\forall u \in V
-\ldotp P(u) \in [0, \rho-1]$. This gives $V=\bigcup_{i=0}^{\rho-1} V_i$
-and $\forall_{i\neq j} \ldotp V_i \cap V_j = \emptyset$.
+In GP \cite{suri2011counting}, the input graph $G=(V, E)$ is split into $\rho$
+partitions ($G_0, G_1, \dots, G_{\rho-1}$) using a partitioning function $P$
+such that $\forall u \in V \ldotp P(u) \in [0, \rho-1]$. This gives
+$V=\bigcup_{i=0}^{\rho-1} V_i$ and $\forall_{i\neq j} \ldotp V_i \cap V_j =
+\emptyset$.
 
-Then, the algorithm finds the triangles in every 3-partition $G_{ijk}$ with $0
-\le i < j < k \le \rho - 1$ and assigns a weight to each. The sum of weights
-across all partitions will give the correct number of triangles in $G$.
+3 partitions $G_i$, $G_j$ and $G_k$ can be combined into one 3-partition
+$G_{ijk}$ by taking the union of the nodes $V_{ijk} \triangleq V_i \cup V_j
+\cup V_k$ and inducing the edges from the original $G$.
+
+The algorithm finds the triangles in every 3-partition $G_{ijk}$ with $0 \le i <
+j < k \le \rho - 1$ and assigns a weight to each. The sum of weights across all
+partitions will give the correct number of triangles in $G$.
 
 Because some triangles are seen in more than one 3-partition, the purpose of the
 weight system is to counteract this effect; ensuring that the weights emitted
@@ -182,19 +188,96 @@ that its nodes belong to:
     \end{enumerate}
 \end{proof}
 
-The distributed nature of GP emerges when observing that each 3-partition can be
-processed independently using an internal memory algorithm. This step acts
-as a \emph{map} function, while summing the weights can be thought of as a
-\emph{reduce} step.
+The \emph{map} step consists of emitting an edge for every 3-partition that it
+belongs to. The \emph{reduce} step is given a complete 3-partition and its job
+is that of enumerating the triangles and emitting a weight for each. A
+subsequent Map-Reduce pass is required to sum up the weights, giving the final
+result.
 
-Depending on the size of $G$, a sufficiently large number of partitions ($\rho$)
+The distributed nature of GP emerges when observing that the actual triangle
+counting process can be performed on every 3-partition independently, using any
+internal memory algorithm.
+
+Depending on the size of $G$, a sufficiently large number of partitions $\rho$
 will make sure that each is sufficiently small to fit inside a single machine.
 
+The main issues with GP is that edges are emitted many times over, to account
+for all 3-partitions in which they appear, and triangles are processed
+redundantly. Take a triangle entirely contained within a single partition for
+instance, with $\rho=10$. It will be processed in $\binom{\rho-1}{2}=36$
+different 3-partitions. The improved algorithm, TTP, brings that number down to
+just 9.
+
 \section{Triangle Type Partition algorithm}
+
+The TTP algorithm \cite{park2013efficient} improves on GP by reducing the amount
+of redundancy and thus, the amount of data transferred in the cluster.
+
+First, we formally classify triangles much in the same way as we did before for
+our proof:
+\begin{description}
+    \item[Type I] Is a triangle $\Delta(u, v, x)$ spanning 1 partition
+    \item[Type II] Is a triangle $\Delta(u, v, x)$ spanning 2 partitions
+    \item[Type III] Is a triangle $\Delta(u, v, x)$ spanning 3 partitions
+\end{description}
+
+Then, edges are also classified as being either \emph{inner} or \emph{outer}. An
+edge $(u,v)$ is said to be inner when $u$ and $v$ belong to the same partition.
+Otherwise, it's an outer edge.
+
+A 3$^\prime$-partition (note the prime), denoted $G^{\prime}_{ijk}$, is a
+3-partition composed only of outer edges. TTP reduces redundancy by searching
+for Type III triangles in 3$^\prime$-partitions while and Type I and II
+triangles in 2-partitions.
+
+The interesting observation to make here is that Type III triangles are entirely
+made up of outer edges and can thus be correctly counted in
+3$^\prime$-partitions that lack inner edges and are thus smaller and quicker to
+process. Additionally, Type I and Type II have at least one inner edge, so they
+are not repeatedly processed in 3$^\prime$-partitions simply because they don't
+exist there. This last point makes for a big performance improvement because the
+number of 3$^\prime$-partitions partitions grows exponentially with $\rho$,
+saving us a lot of extra work.
+
+The overall structure of the TTP algorithm is similar to that of GP: the
+\emph{map} step emits a pair $(p, e)$ for every edge $e$ that belongs to
+partition $p$, then the \emph{reduce} step receives an entire partition (that
+might be a 2-partition or a 3$^\prime$-partition) and emits a weight for each
+triangle found there. The sum of all weights emitted gives the total number of
+triangles in the initial graph $G$.
+
+In TTP, the weights are as follows:
+\[
+    w(\Delta(u,v,x)) = \begin{cases}
+        \frac{1}{\rho-1} & P(u) = P(v) = P(x)  \\
+        1 & \text{otherwise}
+    \end{cases}
+\]
+So Type I triangles get $\frac{1}{\rho-1}$ while Type II and Type III triangles
+get $1$.
+
+\begin{proposition}
+    The sum of weights emitted by TTP for any given triangle $\Delta(u, v, x)$ is $1$.
+\end{proposition}
+\begin{proof}
+    Every triangle is either Type I, Type II or Type III. Let's proceed with a
+    proof by cases.
+    \begin{description}
+        \item[Type I] Suppose $\Delta(u, v, x)$ is entirely contained within
+        partition $G_i$. Then, it appears in all 2-partitions $G_{ij}$ with
+        $j\in[0, \rho-1]$ and $j\neq i$. Therefore, there are ($\rho-1$)
+        2-partitions in which the triangle appears and every time that happens a
+        weight equal to $\frac{1}{\rho-1}$ is emitted. Giving
+        $(\rho-1)*\frac{1}{\rho-1}=1$.
+    \end{description}
+\end{proof}
 
 \section{Implementation explained}
 
 \section{Impact of $\rho$}
 
 \section{Performance comparision TTP vs GP}
+
+\bibliographystyle{plain}
+\bibliography{refs}
 \end{document}
