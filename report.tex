@@ -133,17 +133,16 @@ Then, the algorithm finds the triangles in every 3-partition $G_{ijk}$ with $0
 \le i < j < k \le \rho - 1$ and assigns a weight to each. The sum of weights
 across all partitions will give the correct number of triangles in $G$.
 
-Because some triangles are seen in more than one 3-partition, the purpose of
-the weight system is to counteract this effect; ensuring that the weights
-emitted for a given triangle always sum up to $1$. Take a triangle $\Delta(u, v,
-x)$ entirely contained within partition $G_0=(V_0, E_0)$ for instance
-($\{u,v,x\} \subseteq V_0$), it will be observed repeatedly in any 3-partition
-$G_{0jk}$ with $j,k\neq 0$.
+Because some triangles are seen in more than one 3-partition, the purpose of the
+weight system is to counteract this effect; ensuring that the weights emitted
+for a given triangle always sum up to $1$. Take a triangle $\Delta(u, v, x)$
+entirely contained within partition $G_0=(V_0, E_0)$ for instance, it will be
+observed repeatedly in any 3-partition $G_{0jk}$ with $j,k\neq 0$.
 
 The correct weight for a triangle can be found just by looking at the partitions
 that its nodes belong to:
 \[
-    W(\Delta(u,v,x)) = \begin{cases}
+    w(\Delta(u,v,x)) = \begin{cases}
         \frac{1}{\binom{\rho-1}{2}} & P(u) = P(v) = P(x)  \\
         \frac{1}{\rho-2} & P(u) = P(v) \vee P(v) = P(x) \vee P(u) = P(x) \\
         1 & \text{otherwise}
@@ -154,7 +153,7 @@ that its nodes belong to:
     The sum of weights emitted by GP for any given triangle $\Delta(u, v, x)$ is $1$.
 \end{proposition}
 \begin{proof}
-    One of these cases must be true:
+    Trivially, exactly one of these must be true:
     \begin{enumerate}
         \item $\Delta(u, v, x)$ is entirely contained within a single partition $G_A$
         \item $\Delta(u, v, x)$ is entirely contained within two partitions $G_A$ and $G_B$
@@ -163,17 +162,21 @@ that its nodes belong to:
     \end{enumerate}
     Therefore, we proceed with a proof by cases:
     \begin{enumerate}
-        \item $\Delta(u, v, x)$ appears in any 3-partition $G_{Ajk}$
-        with $j\neq A \wedge k\neq A$. This means
-        choosing $j,k$ among $\rho-1$ possible values, hence:
-        $\binom{\rho-1}{2}$. Because there are $\binom{\rho-1}{2}$ 3-partitions
-        in which the triangle appears, a weight of $\frac{1}{\binom{\rho-1}{2}}$
-        ensures that $\binom{\rho-1}{2}* \frac{1}{\binom{\rho-1}{2}} = 1$.
-        \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ABk}$ with $k
-        \neq A \wedge k \neq B$. This means choosing $k$ among $\rho-2$ possible
-        values. Because there are ($\rho-2$) 3-partitions in which the triangle
-        appears, a weight of $\frac{1}{\rho-2}$ ensures that
-        $(\rho-2)*\frac{1}{\rho-2}=1$.
+        \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ijk}$ where
+        either $i$, $j$ or $k$ is equal to $A$. Therefore, two variables remain
+        free and their values are chosen between $\rho-1$ possible partitions
+        (all except A). Hence: $\binom{\rho-1}{2}$. Because the triangle appears
+        in $\binom{\rho-1}{2}$ 3-partitions, and the weight is emitted once for
+        each, it must be equal to $\frac{1}{\binom{\rho-1}{2}}$ to ensure that
+        $\binom{\rho-1}{2}* \frac{1}{\binom{\rho-1}{2}} = 1$.
+
+        \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ijk}$ with $\{i,
+        j, k\} \subseteq \{A, B\}$. This means that one variable remains free
+        and its value must be choosen among $\rho-2$ possible partitions (all
+        except A and B). Because the triangle appears in ($\rho-2$)
+        3-partitions, and the weight is emitted once for each, it must be equal
+        to $\frac{1}{\rho-2}$ to ensure that $(\rho-2)*\frac{1}{\rho-2}=1$.
+
         \item $\Delta(u, v, x)$ appears just in $G_{ABC}$. The weight $1$ will
         be emitted just once, trivially making the sum equal to $1$.
     \end{enumerate}
