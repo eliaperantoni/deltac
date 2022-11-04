@@ -139,14 +139,14 @@ The algorithm finds the triangles in every 3-partition $G_{ijk}$ with $0 \le i <
 j < k \le \rho - 1$ and assigns a weight to each. The sum of weights across all
 partitions will give the correct number of triangles in $G$.
 
-Because some triangles are seen in more than one 3-partition, the purpose of the
-weight system is to counteract this effect; ensuring that the weights emitted
-for a given triangle always sum up to $1$. Take a triangle $\Delta(u, v, x)$
-entirely contained within partition $G_0=(V_0, E_0)$ for instance, it will be
-observed repeatedly in any 3-partition $G_{0jk}$ with $j,k\neq 0$.
+Some triangles are seen in more than one 3-partition. Take a triangle $\Delta(u,
+v, x)$ entirely contained within partition $G_0=(V_0, E_0)$ for instance, it
+will be observed repeatedly in any 3-partition $G_{0jk}$ with $j,k\neq 0$. The
+purpose of the weight system then is to counteract this effect, ensuring that
+the sum of all weights emitted for a triangle is always $1$. 
 
-The correct weight for a triangle can be found just by looking at the partitions
-that its nodes belong to:
+The weight to emit for a triangle solely depends on the number of partitions
+that its nodes span:
 \[
     w(\Delta(u,v,x)) = \begin{cases}
         \frac{1}{\binom{\rho-1}{2}} & P(u) = P(v) = P(x)  \\
@@ -171,17 +171,17 @@ that its nodes belong to:
         \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ijk}$ where
         either $i$, $j$ or $k$ is equal to $A$. Therefore, two variables remain
         free and their values are chosen between $\rho-1$ possible partitions
-        (all except A). Hence: $\binom{\rho-1}{2}$. Because the triangle appears
-        in $\binom{\rho-1}{2}$ 3-partitions, and the weight is emitted once for
-        each, it must be equal to $\frac{1}{\binom{\rho-1}{2}}$ to ensure that
-        $\binom{\rho-1}{2}* \frac{1}{\binom{\rho-1}{2}} = 1$.
+        (all except A). Hence, $\Delta(u, v, x)$ appears in $\binom{\rho-1}{2}$
+        partitions. For each of those a weight equal to
+        $\frac{1}{\binom{\rho-1}{2}}$ is emitted, giving
+        $\binom{\rho-1}{2}*\frac{1}{\binom{\rho-1}{2}}=1$.
 
         \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ijk}$ with $\{i,
         j, k\} \subseteq \{A, B\}$. This means that one variable remains free
         and its value must be choosen among $\rho-2$ possible partitions (all
-        except A and B). Because the triangle appears in ($\rho-2$)
-        3-partitions, and the weight is emitted once for each, it must be equal
-        to $\frac{1}{\rho-2}$ to ensure that $(\rho-2)*\frac{1}{\rho-2}=1$.
+        except $A$ and $B$). Hence, $\Delta(u, v, x)$ appears in $\rho-2$
+        partitions. For each of those a weight equal to $\frac{1}{\rho-2}$ is
+        emitted, giving $(\rho-2)*\frac{1}{\rho-2}=1$.
 
         \item $\Delta(u, v, x)$ appears just in $G_{ABC}$. The weight $1$ will
         be emitted just once, trivially making the sum equal to $1$.
@@ -231,13 +231,13 @@ for Type III triangles in 3$^\prime$-partitions while and Type I and II
 triangles in 2-partitions.
 
 The interesting observation to make here is that Type III triangles are entirely
-made up of outer edges and can thus be correctly counted in
-3$^\prime$-partitions that lack inner edges and are thus smaller and quicker to
-process. Additionally, Type I and Type II have at least one inner edge, so they
-are not repeatedly processed in 3$^\prime$-partitions simply because they don't
-exist there. This last point makes for a big performance improvement because the
-number of 3$^\prime$-partitions partitions grows exponentially with $\rho$,
-saving us a lot of extra work.
+made up of outer edges and can therefore be correctly counted in
+3$^\prime$-partitions that lack inner edges; thus making them smaller and
+quicker to process. Additionally, Type I and Type II have at least one inner
+edge, so they are not repeatedly processed in 3$^\prime$-partitions simply
+because they don't exist there. The number of 3$^\prime$-partitions partitions
+grows exponentially with $\rho$, so stripping them of inner edges and only
+processing Type III triangles there makes for a big performance improvement.
 
 The overall structure of the TTP algorithm is similar to that of GP: the
 \emph{map} step emits a pair $(p, e)$ for every edge $e$ that belongs to
@@ -264,11 +264,27 @@ get $1$.
     proof by cases.
     \begin{description}
         \item[Type I] Suppose $\Delta(u, v, x)$ is entirely contained within
-        partition $G_i$. Then, it appears in all 2-partitions $G_{ij}$ with
-        $j\in[0, \rho-1]$ and $j\neq i$. Therefore, there are ($\rho-1$)
-        2-partitions in which the triangle appears and every time that happens a
-        weight equal to $\frac{1}{\rho-1}$ is emitted. Giving
-        $(\rho-1)*\frac{1}{\rho-1}=1$.
+        partition $G_A$. Then, it appears in all 2-partitions $G_{ij}$ with
+        $i=A$ or $j=A$. It cannot appear in 3$^\prime$-partitions because a Type
+        I triangle is entirely made out of inner edges, which
+        3$^\prime$-partitions lack. Therefore, there are $\rho-1$ partitions in
+        which the triangle appears. And every time that happens a weight equal
+        to $\frac{1}{\rho-1}$ is emitted. Giving $(\rho-1)*\frac{1}{\rho-1}=1$.
+
+        \item[Type II] Suppose $\Delta(u, v, x)$ is entirely contained within
+        partition $G_A$ and $G_B$ (suppose also wlog that $A<B$). Then, it
+        appears only in 2-partition $G_{AB}$. It cannot appear in
+        3$^\prime$-partitions because a Type II triangle has one inner edge,
+        which 3$^\prime$-partitions lack. Therefore, there is just one partition
+        in which the triangle appears. Since $1$ is emitted just once, the sum
+        is trivially equal to $1$.
+
+        \item[Type III] Suppose $\Delta(u, v, x)$ spans three partitions $G_A$,
+        $G_B$ and $G_C$ (suppose also wlog that $A<B<C$). Then, it appears only
+        in 3$^\prime$-partition $G_{ABC}$. It cannot appear in 2-partitions
+        simply because the triangle is composed of nodes from three distint
+        partitions. Since $1$ is emitted just once, the sum is trivially equal
+        to $1$.
     \end{description}
 \end{proof}
 
