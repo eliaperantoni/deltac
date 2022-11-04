@@ -12,6 +12,10 @@
 
 \usepackage{parskip}
 
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, citecolor=black, urlcolor=blue}
+\urlstyle{same}
+
 \usepackage[outputdir=out]{minted}
 \usemintedstyle{tango}
 
@@ -288,7 +292,29 @@ get $1$.
     \end{description}
 \end{proof}
 
-\section{Implementation explained}
+\section{Datasets}
+For this project, undirected graphs from the
+\href{http://snap.stanford.edu/data/index.html}{Standford Large Network Dataset
+Collection} were used. In particular, the software is tested against these (in
+order of disk size):
+\begin{enumerate}
+    \item ego-Facebook (1612010 triangles)
+    \item email-Enron (727044 triangles)
+    \item com-Amazon (667129 triangles)
+    \item roadNet-CA (120676 triangles)
+\end{enumerate}
+
+To make the whole algorithm easier to understand and reason about, the same
+example from \cite{park2013efficient} is also used before getting to more
+complicated datasets.
+
+Each dataset is given as a text file in the \mintinline{text}{datasets/}
+directory. Nodes are identified by means of a unique integer and for each edge
+$(u,v) \in E$ there is a line in the file with the node ids of $u$ and $v$,
+separated by whitespace. \emph{Edges are not reported twice}, meaning there is
+no \mintinline{text}{"v u"} line when \mintinline{text}{"u v"} is already there.
+
+\section{Implementation in depth}
 
 \section{Impact of $\rho$}
 
