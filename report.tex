@@ -251,6 +251,9 @@ that its nodes span:
     \end{enumerate}
 \end{proof}
 
+Since the sum of weights for any triangle amounts to exactly one, then the sum
+of all weights is exactly the number of triangles in the graph.
+
 The \emph{map} step consists of emitting an edge for every 3-partition that it
 belongs to. The \emph{reduce} step is given a complete 3-partition and its job
 is that of enumerating the triangles and emitting a weight for each. A
@@ -442,8 +445,8 @@ edge.
 Next, we partition the graph by defining the number of partitions $\rho$ and a
 partitioning function $P$. Note that the partitioning function initially used in
 the notebook only works for the example graph shown in fig. \ref{graph} and was
-chosen to mimic what's explained in \cite{park2013efficient}. A better, more
-general, partitioning function will be provided later:
+chosen to mimic what's in \cite{park2013efficient}. A better, more general,
+partitioning function will be provided later:
 \begin{minted}{python}
 RHO = 4
 def P(node: int) -> int:
