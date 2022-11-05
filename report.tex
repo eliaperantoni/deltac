@@ -130,7 +130,8 @@ replication) among the machines belonging to the same cluster. What's different
 from HDFS is that RDDs' shards are stored in internal memory, thus noticeably
 improving the performance of read/write operations.
 
-Our implementation is Apache Spark based.
+Our implementation is Apache Spark based and consumes its API via the Python
+SDK.
 
 \section{Graph Partition algorithm}
 In GP \cite{suri2011counting}, the input graph $G=(V, E)$ is split into $\rho$
@@ -660,10 +661,11 @@ combinatorial partitions to process (see fig. \ref{rho_comb}). But each
 combinatorial partition is now larger, potentially making it impossible for a
 combinatorial partition to fit inside a single machine anymore.
 
-\begin{figure}[htb]
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.7\textwidth]{img/rho_comb}
-    \caption{} \label{rho_comb}
+    \caption{How $\rho$ relates to the number of combinatorial partitions}
+    \label{rho_comb}
 \end{figure}
 
 Also, larger combinatorial partitions drive up the computational cost of the
@@ -671,21 +673,20 @@ internal memory algorithm used. This suggests that a tradeoff is at play and one
 should not simply pick the lowest possible value of $\rho$ that allows all
 combinatorial partitions to fit in the workers' memory.
 
+\vbox{
 To prove this point, we have benchmarked the algorithm with different values for
 $\rho$ in $[2, 16]$ on the Ego Facebook datasets (see sect. \ref{datasets}). The
 executions times are as observed by Python, since the Apache Spark admin console
-is only precise down to the second.
-
-\begin{figure}[htb]
+is only precise down to the second:
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.7\textwidth]{img/rho_time}
-    \caption{} \label{rho_time}
 \end{figure}
+}
 
-On my machine, the best tradeoff seems to be around $\rho=4$ or $\rho=5$ (see
-fig. \ref{rho_time}) but this is definitely dependent on the number of machines
-in the cluster and their power. Point is: the lowest value for $\rho$ is not
-necessarily the best.
+On my machine, the best tradeoff seems to be around $\rho=4$ or $\rho=5$ but
+this is definitely dependent on the number of machines in the cluster and their
+power. Point is: the lowest value for $\rho$ is not necessarily the best.
 
 Other factors that come into play are the amount of redundant processing of
 triangles and the amount of Type I \& Type II triangles versus the amount of
@@ -702,15 +703,15 @@ As you can tell, there is quite a large number of effects going in opposite
 directions that depend on $\rho$, and predicting the best possible value is no
 easy task.
 
+\vbox{
 If we shift our focus from execution time to amount of data exchanged during the
-shuffle step, we see that it increases as $\rho$ increases, as one would expect
-(fig. \ref{rho_data}).
-
-\begin{figure}[htb]
+shuffle step, we see that it increases as $\rho$ increases, as one would
+expect:
+\begin{figure}[H]
     \centering
     \includegraphics[width=0.7\textwidth]{img/rho_data}
-    \caption{} \label{rho_data}
 \end{figure}
+}
 
 (The amount of data was scraped from Spark's admin console using Python packages
 \mintinline{text}{requests} and \mintinline{text}{beautifulsoup4}).
@@ -724,6 +725,36 @@ larger $\rho$ there are more $G_{0j}$ and $G^\prime_{0jk}$ for which to emit an
 edge, driving up the amount of data exchanged.
 
 \section{Performance comparison TTP vs GP}
+We have covered the differences between the two algorithms before. The Jupyter
+notebook provides not just an implementation for TTP but also for GP.
+
+\vbox{
+Let's run them the two algorithms on the same dataset, and with various values
+for $\rho$, to see how they compare:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{img/vs_gp_time}
+    \includegraphics[width=0.7\textwidth]{img/vs_gp_data}
+\end{figure}
+}
+
+TTP consistently performs better than GP in terms of execution time. For a low
+number of partitions, GP needs to exchange slightly less data between workers.
+This is due to the fact that TTP emits not only 3-partitions but instead both
+2-partitions and 3$^\prime$-partitions. This strategy might seem sub-optimal
+when one is working with a few partitions but proves to be very good when
+working with large graphs that need to be split in many partitions, which is the
+primary focus with this kind of algorithm anyway.
+
+\section{Conclusions}
+We started by explaining how the Graph Partition (GP) algorithm counts triangles
+in a graph by splitting the work across many, much smaller, 3-partitions. Then
+we moved to the Triangle Type Partition (TTP) and seen how it improves upon GP
+by classifying triangles and counting Type I and Type II triangles in different
+partitions than Type III to reduce redundant data flow and computation. We have
+tested the algorithm on many large graphs and experimented with different
+numbers of partitions to see how that affects performance. Finally, we have
+compared TTP against GP to prove that it actually performs better in practice.
 
 \bibliographystyle{plain}
 \bibliography{refs}
