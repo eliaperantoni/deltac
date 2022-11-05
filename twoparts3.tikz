@@ -1,0 +1,13 @@
+\begin{tikzpicture}[main/.style={draw, circle, minimum size=16pt, inner sep=0pt}]
+    \node[main] (7) at (1, 2) {7};
+    \node[main] (8) at (0, 0) {8};
+    \node[main] (9) at (2, 1) {9};
+
+    \node[main] (10) at (5, 1) {10};
+    \node[main] (11) at (6, 2) {11};
+    \node[main] (12) at (7, 0) {12};
+
+    \draw (8) -- (7) -- (9);
+    \draw (10) -- (12) -- (11);
+    \draw (7) -- (10);
+\end{tikzpicture}

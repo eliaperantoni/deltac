@@ -9,12 +9,17 @@
 \usepackage{url}
 
 \usepackage{tikz} 
+\usepackage{tikzscale}
 
 \usepackage{parskip}
 
 \usepackage{hyperref}
-\hypersetup{colorlinks=true, citecolor=black, urlcolor=blue}
+\hypersetup{colorlinks=true, citecolor=black, linkcolor=black, urlcolor=blue}
 \urlstyle{same}
+
+\usepackage{subfigure}
+
+\usepackage{caption}
 
 \usepackage[outputdir=out]{minted}
 \usemintedstyle{tango}
@@ -32,10 +37,6 @@
 \renewcommand{\headrulewidth}{0pt}
 \renewcommand{\footrulewidth}{0pt}
 \setlength{\headheight}{13.6pt}
-
-\numberwithin{equation}{section}
-\numberwithin{figure}{section}
-\numberwithin{table}{section}
 
 \newcommand{\horrule}[1]{\rule{\linewidth}{#1}}
 
@@ -81,14 +82,14 @@ The problem of counting triangles in a graph inherits great importance from
 several interesting metrics on graphs that build upon it. The clustering
 coefficient, for instance, is a measure of the degree to which nodes in a graph
 tend to cluster together. Evidence suggests that real world graphs, social
-networks in particular, tend to create tightly knit groups characterised by a
+networks in particular, tend to create tightly knit groups characterized by a
 relatively high density of ties. This metric, arguably a very insightful one,
 requires the number of triangles to be known, in order to compute it. Hence, its
 relevance.
 
 In recent years, internal and external memory algorithms have been developed to
 solve the problem of triangle counting; but some of the graphs that we wish to
-analyse have become so large that they can no longer fit inside a single
+analyze have become so large that they can no longer fit inside a single
 machine.
 
 A popular technique for distributed computation is \emph{Map-Reduce}: a
@@ -103,7 +104,7 @@ the work can be distributed among a large number of machines.
 
 This report comes with, and provides context to, a Jupyter notebook in which a
 recently developed Map-Reduce algorithm known as \emph{TTP (Triangle Type
-Partition)} \cite{park2013efficient} is implemented, tested, analysed and
+Partition)} \cite{park2013efficient} is implemented, tested, analyzed and
 compared with one of its predecessor: \emph{GP (Graph Partition)}
 \cite{suri2011counting}.
 
@@ -113,12 +114,12 @@ two algorithms have many concepts in common but GP is easier to understand.
 \section{The tools}
 Arguably, the most known Map-Reduce implementation is \emph{Apache Hadoop},
 which also provides a distributed file system for data persistence: \emph{HDFS
-(Hadoop Distribtued File System)}. However, using Hadoop is somewhat tedious as
+(Hadoop Distributed File System)}. However, using Hadoop is somewhat tedious as
 the provided functionality is limited to plain Map-Reduce only. Also, HDFS comes
 with sup-optimal performance as secondary storage is used.
 
 \emph{Apache Spark} is a software based on Hadoop that provides the framework
-and unified set of APIs for peforming a wide range of distributed computation
+and unified set of APIs for performing a wide range of distributed computation
 operations that go beyond just simple Map-Reduce. Spark also improves on HDFS by
 using what's known as: \emph{RDD (Resilient Distributed Dataset)}. It's a
 managed data structure that gets sharded and distributed (possibly with
@@ -136,8 +137,62 @@ $V=\bigcup_{i=0}^{\rho-1} V_i$ and $\forall_{i\neq j} \ldotp V_i \cap V_j =
 \emptyset$.
 
 3 partitions $G_i$, $G_j$ and $G_k$ can be combined into one 3-partition
-$G_{ijk}$ by taking the union of the nodes $V_{ijk} \triangleq V_i \cup V_j
-\cup V_k$ and inducing the edges from the original $G$.
+$G_{ijk}$ by taking the union of the nodes $V_{ijk} \triangleq V_i \cup V_j \cup
+V_k$ and inducing the edges from the original $G$. See fig. \ref{some3parts} for
+some examples.
+
+\begin{figure}[h]
+    \centering
+    \begin{tikzpicture}[main/.style={draw, circle, minimum size=22pt, inner sep=0pt}]
+        \node[main] (1) at (2, 7) {1};
+        \node[main] (2) at (0, 6) {2};
+        \node[main] (3) at (2, 5) {3};
+
+        \node[main] (4) at (5, 7) {4};
+        \node[main] (5) at (7, 6) {5};
+        \node[main] (6) at (5, 5) {6};
+
+        \node[main] (7) at (1, 2) {7};
+        \node[main] (8) at (0, 0) {8};
+        \node[main] (9) at (2, 1) {9};
+
+        \node[main] (10) at (5, 1) {10};
+        \node[main] (11) at (6, 2) {11};
+        \node[main] (12) at (7, 0) {12};
+
+        \draw (1) -- (2) -- (3) -- (1);
+        \draw (4) -- (5) -- (6) -- (4);
+        \draw (8) -- (7) -- (9);
+        \draw (10) -- (12) -- (11);
+
+        \draw (4) -- (3) -- (6);
+        \draw (7) -- (10) -- (6) -- (7);
+        \draw (3) -- (7);
+
+        \draw[dashed] (-1, 3.5) -- (8, 3.5);
+        \draw[dashed] (3.5, -1) -- (3.5, 8);
+
+        \node at (-1.5,5.25) {Partition 0};
+        \node at (8.5,5.25) {Partition 1};
+        \node at (-1.5,1.75) {Partition 2};
+        \node at (8.5,1.75) {Partition 3};
+    \end{tikzpicture}
+    \caption{A simple graph divided into 4 partitions}
+    \label{graph}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \subfigure[$G_{012}$]{
+        \includegraphics[width=0.3\linewidth]{threeparts1}
+    }
+    \hspace{40pt}
+    \subfigure[$G_{123}$]{
+        \includegraphics[width=0.3\linewidth]{threeparts2}
+    }
+    \caption{Some 3-partitions from the graph in fig. \ref{graph}}
+    \label{some3parts}
+\end{figure}
 
 The algorithm finds the triangles in every 3-partition $G_{ijk}$ with $0 \le i <
 j < k \le \rho - 1$ and assigns a weight to each. The sum of weights across all
@@ -182,7 +237,7 @@ that its nodes span:
 
         \item $\Delta(u, v, x)$ appears in any 3-partition $G_{ijk}$ with $\{i,
         j, k\} \subseteq \{A, B\}$. This means that one variable remains free
-        and its value must be choosen among $\rho-2$ possible partitions (all
+        and its value must be chosen among $\rho-2$ possible partitions (all
         except $A$ and $B$). Hence, $\Delta(u, v, x)$ appears in $\rho-2$
         partitions. For each of those a weight equal to $\frac{1}{\rho-2}$ is
         emitted, giving $(\rho-2)*\frac{1}{\rho-2}=1$.
@@ -225,6 +280,10 @@ our proof:
     \item[Type III] Is a triangle $\Delta(u, v, x)$ spanning 3 partitions
 \end{description}
 
+For instance, in fig. \ref{graph} $\Delta(1,2,3)$ is a Type I triangle,
+$\Delta(3,4,6)$ is a Type II triangle and $\Delta(3,6,7)$ is a Type III
+triangle.
+
 Then, edges are also classified as being either \emph{inner} or \emph{outer}. An
 edge $(u,v)$ is said to be inner when $u$ and $v$ belong to the same partition.
 Otherwise, it's an outer edge.
@@ -233,6 +292,37 @@ A 3$^\prime$-partition (note the prime), denoted $G^{\prime}_{ijk}$, is a
 3-partition composed only of outer edges. TTP reduces redundancy by searching
 for Type III triangles in 3$^\prime$-partitions while and Type I and II
 triangles in 2-partitions.
+
+See fig. \ref{ttp} for some examples of 2-partitions and 3$^\prime$-partitions.
+
+\begin{figure}[h]
+    \centering
+
+    \subfigure[$G_{01}$]{
+        \includegraphics[width=0.3\linewidth]{twoparts1.tikz}
+    }
+    \hspace{20pt}
+    \subfigure[$G_{02}$]{
+        \includegraphics[height=0.3\linewidth]{twoparts2.tikz}
+    }
+    \hspace{20pt}
+    \subfigure[$G_{23}$]{
+        \includegraphics[width=0.3\linewidth]{twoparts3.tikz}
+    }
+
+    \par\bigskip
+
+    \subfigure[$G^\prime_{012}$]{
+        \includegraphics[width=0.3\linewidth]{threepartsprime1}
+    }
+    \hspace{20pt}
+    \subfigure[$G^\prime_{123}$]{
+        \includegraphics[width=0.3\linewidth]{threepartsprime2}
+    }
+    \caption{Some examples of 2-partitions and 3$^\prime$-partitions from the
+    graph in fig. \ref{graph}}
+    \label{ttp}
+\end{figure}
 
 The interesting observation to make here is that Type III triangles are entirely
 made up of outer edges and can therefore be correctly counted in
@@ -286,7 +376,7 @@ get $1$.
         \item[Type III] Suppose $\Delta(u, v, x)$ spans three partitions $G_A$,
         $G_B$ and $G_C$ (suppose also wlog that $A<B<C$). Then, it appears only
         in 3$^\prime$-partition $G_{ABC}$. It cannot appear in 2-partitions
-        simply because the triangle is composed of nodes from three distint
+        simply because the triangle is composed of nodes from three distinct
         partitions. Since $1$ is emitted just once, the sum is trivially equal
         to $1$.
     \end{description}
@@ -315,10 +405,13 @@ separated by whitespace. \emph{Edges are not reported twice}, meaning there is
 no \mintinline{text}{"v u"} line when \mintinline{text}{"u v"} is already there.
 
 \section{Implementation in depth}
+In this section, we are going to walk through the implementation provided along
+with this report as a Jupyter notebook. The same example graph used in
+\cite{park2013efficient} will be used throughout.
 
 \section{Impact of $\rho$}
 
-\section{Performance comparision TTP vs GP}
+\section{Performance comparison TTP vs GP}
 
 \bibliographystyle{plain}
 \bibliography{refs}
