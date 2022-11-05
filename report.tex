@@ -23,6 +23,7 @@
 
 \usepackage[outputdir=out]{minted}
 \usemintedstyle{tango}
+\setmintedinline{breaklines}
 
 \newtheorem{proposition}{Proposition}
 
@@ -291,7 +292,10 @@ Otherwise, it's an outer edge.
 A 3$^\prime$-partition (note the prime), denoted $G^{\prime}_{ijk}$, is a
 3-partition composed only of outer edges. TTP reduces redundancy by searching
 for Type III triangles in 3$^\prime$-partitions while and Type I and II
-triangles in 2-partitions.
+triangles in 2-partitions. In the future, we may refer to 2-partitions and
+3$^\prime$-partitions as \emph{combinatorial partitions} to emphasize that they
+are a combination of multiple $G_i$ ($i\in[0, \rho-1]$) partitions and to better
+distinguish them.
 
 See fig. \ref{ttp} for some examples of 2-partitions and 3$^\prime$-partitions.
 
@@ -341,12 +345,12 @@ triangle found there. The sum of all weights emitted gives the total number of
 triangles in the initial graph $G$.
 
 In TTP, the weights are as follows:
-\[
+\begin{equation} \label{ttpweights}
     w(\Delta(u,v,x)) = \begin{cases}
         \frac{1}{\rho-1} & P(u) = P(v) = P(x)  \\
         1 & \text{otherwise}
     \end{cases}
-\]
+\end{equation}
 So Type I triangles get $\frac{1}{\rho-1}$ while Type II and Type III triangles
 get $1$.
 
@@ -382,7 +386,7 @@ get $1$.
     \end{description}
 \end{proof}
 
-\section{Datasets}
+\section{Datasets} \label{datasets}
 For this project, undirected graphs from the
 \href{http://snap.stanford.edu/data/index.html}{Standford Large Network Dataset
 Collection} were used. In particular, the software is tested against these (in
@@ -407,7 +411,243 @@ no \mintinline{text}{"v u"} line when \mintinline{text}{"u v"} is already there.
 \section{Implementation in depth}
 In this section, we are going to walk through the implementation provided along
 with this report as a Jupyter notebook. The same example graph used in
-\cite{park2013efficient} will be used throughout.
+\cite{park2013efficient} (also shown in fig. \ref{graph}) will be used
+throughout.
+
+First, we load the dataset from disk and perform some preprocessing to make
+everything easier.
+\begin{minted}{python}
+edges = (sc
+    .textFile(DATASET)
+    .filter(bool)                     # Discard empty lines
+    .map(lambda line: line.split())   # Split nodes in edge
+    .map(lambda x: list(map(int, x))) # Parse node ids
+    .map(tuple))                      # Convert list to tuple
+\end{minted}
+The call to \mintinline{python}{textFile} returns an RDD whose elements are
+lines from the dataset's file. We filter out empty lines using the
+\mintinline{python}{bool} built-in function, then split each line by whitespace
+to get a pair of node ids, both of which are parsed to integers. Then the pair
+of nodes, thus far represented with a list of length 2, is converted to a tuple,
+just for personal preference.
+
+If we were to collect \mintinline{python}{edges}, the result would look
+something like: \mintinline{python}{[(1, 2), (1, 3), (2, 3), (4, 5), (4, 6),
+...]}. Each tuple in the list is a pair of node ids representing an undirected
+edge.
+
+Next, we partition the graph by defining the number of partitions $\rho$ and a
+partitioning function $P$. Note that the partitioning function initially used in
+the notebook only works for the example graph shown in fig. \ref{graph} and was
+chosen to mimic what's explained in \cite{park2013efficient}. A better, more
+general, partitioning function will be provided later:
+\begin{minted}{python}
+RHO = 4
+def P(node: int) -> int:
+    return (node - 1) // (RHO - 1)
+\end{minted}
+
+Now we need to build the 2-partitions and 3$^\prime$-partitions that will be
+distributed among workers for independent triangle counting. This process works
+by producing a set $\{(p,e)\}$, where each element $(p,e)$ is stating that edge
+$e$ belongs to the combinatorial $p$, and grouping by $p$ to obtain all the
+edges for that partition.
+
+\mintinline{python}{edges_in_2p_map} and \mintinline{python}{edges_in_3p_map}
+are the mapping functions that take an edge $e\in E$ and map it to all $(p,e)$
+such that $p$ is a 2-partition or a 3$^\prime$-partition respectively, and $e$
+belongs to $p$:
+\begin{minted}{python}
+def edges_in_2p_map(edge):
+    u, v = edge
+    res = []
+    for a in range(0, RHO - 1):
+        for b in range(a + 1, RHO):
+            if P(u) in [a, b] and P(v) in [a, b]:
+                res.append(((a, b), (u, v)))     
+    return res
+
+def edges_in_3p_map(edge):
+    u, v = edge
+    if P(u) == P(v):
+        return []
+    res = []
+    for a in range(0, RHO - 2):
+        for b in range(a + 1, RHO - 1):
+            for c in range(b + 1, RHO):
+                if P(u) in [a, b, c] and P(v) in [a, b, c]:
+                    res.append(((a, b, c), (u, v)))
+    return res
+\end{minted}
+Notice that, because inner edges never appear in 3$^\prime$-partitions, if for
+an edge $e=(u,v)$ we have $P(u)=P(v)$ then \mintinline{python}{edges_in_3p_map}
+completely skips it.
+
+We map all the edges in the graph using both functions in parallel and flatten
+the results. The flattening step is necessary because each edge produces not
+just one $(p,e)$ pair but many of them instead.
+
+We end up with two sets $\{(p,e)\}$: the first only contains pairs
+$(p,e)$ where $p$ is a 2-partition while the second only contains pairs $(p,e)$
+where $p$ is a 3$^\prime$-partition. We take the union of those two sets:
+\begin{minted}{python}
+edges_in_2p = edges.flatMap(edges_in_2p_map)
+edges_in_3p = edges.flatMap(edges_in_3p_map)
+edges_in_Xp = edges_in_2p.union(edges_in_3p)
+\end{minted}
+
+If we now were to inspect \mintinline{python}{edges_in_Xp} we would see something
+like:
+\begin{minted}{python}
+[((0, 1), (1, 2)),
+ ((0, 2), (1, 2)),
+ ((0, 3), (1, 2)),
+ ((0, 1), (1, 3)),
+ ((0, 2), (1, 3)),
+ ...,
+ ((0, 1, 2), (3, 6))
+ ...,
+]
+\end{minted}
+Meaning that edge $(1,2)$ belongs to partitions $G_{01}$, $G_{02}$ and $G_{03}$;
+edge $(1,3)$ belongs to partitions $G_{01}$, $G_{02}$, etc... But also, maybe
+more interestingly, edge $(3,6)$ belongs to partition $G^\prime_{012}$.
+
+Noticing that we now have a collection of pairs where the partition occupies the
+first position, we can \mintinline{python}{groupByKey} to collect all the edges
+belonging to the same partition:
+\begin{minted}{python}
+# Merge together all the edges belonging to the same partition
+edges_in_Xp_merged = edges_in_Xp.groupByKey()
+\end{minted}
+
+Now we are finally ready to count the triangles in every partition, emitting a
+weight for each, and summing the results.
+
+First, \mintinline{python}{assign_weight} is the function that takes a triangle
+and assigns a weight to it. It's exactly an implementation of eq.
+\ref{ttpweights}:
+\begin{minted}{python}
+# Will be used later on to avoid floating point arithmetic errors.
+from fractions import Fraction
+
+def assign_weight(triangle):
+    u, v, x = triangle
+    if P(u) == P(v) == P(x):
+        # If triangle is Type I, then the weight is 1/(RHO-1).
+        return Fraction(1, RHO-1)
+    else:
+        # For all other triangles, 1 because they are observed only once.
+        return Fraction(1, 1)
+\end{minted}
+
+The usage of \mintinline{python}{Fraction}, instead of simply
+\mintinline{python}{float}, is due to the fact that floating pointer numbers do
+not have infinite precision and so slight errors can slowly creep up and lead to
+wrong results. Here's a toy example to demonstrate the fact (Python 3.10.8):
+\begin{minted}{python}
+>>> 0.1 + 0.2
+0.30000000000000004
+\end{minted}
+
+\mintinline{python}{Fraction} is a great alternative when one wishes to store
+rational numbers with more precision because the numerator and denominator are
+stored separately as integers:
+\begin{minted}{python}
+>>> Fraction(1, 10) + Fraction(2, 10)
+Fraction(3, 10)
+>>> float(Fraction(1, 10) + Fraction(2, 10))
+0.3
+\end{minted}
+
+Now getting back to our algorithm, recall that we have a collection of $(p,
+\{e\})$ elements. That is: for every combinatorial partition $p$ we have a list
+of edges that belong to it. Now that we have grouped all edges belonging to the
+same $p$, we can actually strip that away because that's not needed for inducing
+a graph and counting triangles on it. Then we're left with a collection of
+edge-sets $\{e\}$, each of which can be processed independently by applying
+\mintinline{python}{total_partition_weight} to it:
+\begin{minted}{python}
+weights = (edges_in_Xp_merged
+    .map(lambda x: x[1])
+    .map(total_partition_weight))
+\end{minted}
+
+The job of \mintinline{python}{total_partition_weight} is that of inducing the
+subgraph of the combinatorial partition, using the provided edge-set, and
+emitting a weight for each triangle found there. Since this is performed on a
+single combinatorial partition, much smaller than the entire graph $G$, and on
+different workers, an internal memory algorithm for triangle enumeration can be
+used. 
+
+\cite{park2013efficient} cites many different internal memory algorithms in its
+"Related Works" section but it doesn't really matter which one is used. Since
+\mintinline{python}{total_partition_weight} is given a list of edges, we found
+the \emph{edge-iterator algorithm} a pretty natural choice. It works by
+iterating through all edges and, for each $(u,v)\in E$, taking the intersection
+of the adjacency list of $u$ and of $v$. For any node $x$ in the intersection, a
+triangle $\Delta(u,v,x)$ is recorded. Notice that this algorithm observes each
+triangle three times. Therefore, proper measures should be in place to take this
+into account. We're simply relying on Python's sets to remove duplicate
+triangles.
+
+\begin{minted}{python}
+def total_partition_weight(edges):
+    # Given the list of edges, build an adjacency list.
+    adj = dict()
+    for edge in edges:
+        u, v = edge
+        adj[u] = adj.get(u, set()) | {v}
+        adj[v] = adj.get(v, set()) | {u}
+        
+    # Collect here the set of edges found in this partition.
+    # Use a set to avoid duplication.
+    triangles = set()
+    for edge in edges:
+        u, v = edge
+        # Take the intersection of the adjacency list of u and v.
+        # For each node x, a triangle (u,v,x) exists.
+        triangles |= {frozenset((u,v,x)) for x in adj[u] & adj[v]}
+    
+    # For each triangle found in this partition, compute its weight.
+    _sum = Fraction(0, 1)
+    for triangle in triangles:
+        _sum += assign_weight(triangle)
+        
+    # And return the sum of the weights.
+    return _sum
+\end{minted}
+
+We use the list of edges to build an adjacency list for every node, then we run
+the actual edge-iterator algorithm recording every triangle without duplication,
+and finally we compute the weight for each triangle found in this combinatorial
+partition and emit the partial sum.
+
+\mintinline{python}{triangles} is a set of triangles but every triangle is, in
+turn, a set of nodes. This is because changing the order of nodes in a triangle
+does not make it any different. But standard sets cannot be added to other sets
+because they are not hashable; to overcome this problem
+\mintinline{python}{frozenset} must be used.
+
+All that's left to do now is add all the partial sums coming the various
+partitions into one \mintinline{python}{Fraction} and converting that to an
+integer:
+\begin{minted}{python}
+# Sum the weight from every partition
+round(weights.sum())
+\end{minted}
+And sure enough, we get 5, which is what we expected for the graph in fig.
+\ref{graph}.
+
+As soon as we swap the simplified partitioning function $P$ with a more general
+one such as this:
+\begin{minted}{python}
+def P(node: int) -> int:
+    return node % RHO
+\end{minted}
+Then we can start testing the implementation on more and larger graphs. We
+successfully conducted tests on all the datasets in sect. \ref{datasets} and you
+can see the results in the attached notebook.
 
 \section{Impact of $\rho$}
 
