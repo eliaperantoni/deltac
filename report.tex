@@ -8,6 +8,8 @@
 \usepackage[pdftex]{graphicx} 
 \usepackage{url}
 
+\usepackage{float}
+
 \usepackage{tikz} 
 \usepackage{tikzscale}
 
@@ -650,6 +652,76 @@ successfully conducted tests on all the datasets in sect. \ref{datasets} and you
 can see the results in the attached notebook.
 
 \section{Impact of $\rho$}
+And now for some performance analysis: how does the number of partitions $\rho$
+affect the execution time and amount of data exchanged between workers in TTP?
+Given that the total number of combinatorial partitions is $\binom{\rho}{2} +
+\binom{\rho}{3}$, a lower value of $\rho$ will result in significantly less
+combinatorial partitions to process (see fig. \ref{rho_comb}). But each
+combinatorial partition is now larger, potentially making it impossible for a
+combinatorial partition to fit inside a single machine anymore.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=0.7\textwidth]{img/rho_comb}
+    \caption{} \label{rho_comb}
+\end{figure}
+
+Also, larger combinatorial partitions drive up the computational cost of the
+internal memory algorithm used. This suggests that a tradeoff is at play and one
+should not simply pick the lowest possible value of $\rho$ that allows all
+combinatorial partitions to fit in the workers' memory.
+
+To prove this point, we have benchmarked the algorithm with different values for
+$\rho$ in $[2, 16]$ on the Ego Facebook datasets (see sect. \ref{datasets}). The
+executions times are as observed by Python, since the Apache Spark admin console
+is only precise down to the second.
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=0.7\textwidth]{img/rho_time}
+    \caption{} \label{rho_time}
+\end{figure}
+
+On my machine, the best tradeoff seems to be around $\rho=4$ or $\rho=5$ (see
+fig. \ref{rho_time}) but this is definitely dependent on the number of machines
+in the cluster and their power. Point is: the lowest value for $\rho$ is not
+necessarily the best.
+
+Other factors that come into play are the amount of redundant processing of
+triangles and the amount of Type I \& Type II triangles versus the amount of
+Type III triangles. We've seen that as $\rho$ increases, the number of
+combinatorial partitions increases. Therefore, a Type I triangle $\Delta(u,v,x)$
+in partition $G_0$, for instance, is repeatedly counted in all 2-partitions
+$G_{0j}$ with $j\in[1,\rho-1]$ and the number of those clearly increases with
+$\rho$. On the other hand, a lower number of partitions means that more and more
+triangles become Type I or Type II. The great thing about Type III triangles is
+that they can be counted in stripped down subgraphs that are processed faster.
+Having less of them is detrimental to the performance of the algorithm.
+
+As you can tell, there is quite a large number of effects going in opposite
+directions that depend on $\rho$, and predicting the best possible value is no
+easy task.
+
+If we shift our focus from execution time to amount of data exchanged during the
+shuffle step, we see that it increases as $\rho$ increases, as one would expect
+(fig. \ref{rho_data}).
+
+\begin{figure}[htb]
+    \centering
+    \includegraphics[width=0.7\textwidth]{img/rho_data}
+    \caption{} \label{rho_data}
+\end{figure}
+
+(The amount of data was scraped from Spark's admin console using Python packages
+\mintinline{text}{requests} and \mintinline{text}{beautifulsoup4}).
+
+This can be explained by observing that a larger number of partitions $\rho$
+makes for a larger number of combinatorial partitions, and this in turn results
+in more duplication when emitting $(p,e)$ pairs: imagine an edge $(u,v)$
+belonging to partition $G_0$, it is emitted in all $G_{0j}$ with $j\in[1,
+\rho-1]$ and in all $G^\prime_{0jk}$ with $j,k\in[1, \rho-1]$. Obviously, with a
+larger $\rho$ there are more $G_{0j}$ and $G^\prime_{0jk}$ for which to emit an
+edge, driving up the amount of data exchanged.
 
 \section{Performance comparison TTP vs GP}
 
