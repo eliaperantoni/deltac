@@ -676,14 +676,17 @@ internal memory algorithm used. This suggests that a tradeoff is at play and one
 should not simply pick the lowest possible value of $\rho$ that allows all
 combinatorial partitions to fit in the workers' memory.
 
-\vbox{
-To prove this point, we have benchmarked the algorithm with different values for
-$\rho$ in $[2, 16]$ on the Ego Facebook datasets (see sect. \ref{datasets}). The
-executions times are as observed by Python, since the Apache Spark admin console
-is only precise down to the second:
+\vbox{ To prove this point, we have benchmarked the algorithm with different
+values for $\rho$ in the range $[2, 16]$ on most of the datasets mentioned in
+sect. \ref{datasets}. We've only left out the very first graph because it's way
+too small to be meaningful, and the California road network dataset because the
+time it takes for the algorithm to process it is not suitable for repeated
+benchmarking, and is larger than necessary really. The executions times are as
+observed by Python, since the Apache Spark admin console is only precise down to
+the second:
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{img/rho_time}
+    \includegraphics[width=0.7\textwidth,trim={0 2.8cm 0 3cm},clip]{img/rho_time}
 \end{figure}
 }
 
@@ -712,7 +715,7 @@ shuffle step, we see that it increases as $\rho$ increases, as one would
 expect:
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{img/rho_data}
+    \includegraphics[width=0.7\textwidth,trim={0 2.8cm 0 3cm},clip]{img/rho_data}
 \end{figure}
 }
 
@@ -736,18 +739,24 @@ Let's run them the two algorithms on the same dataset, and with various values
 for $\rho$, to see how they compare:
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.7\textwidth]{img/vs_gp_time}
-    \includegraphics[width=0.7\textwidth]{img/vs_gp_data}
+    \includegraphics[width=0.7\textwidth,trim={0 2.8cm 0 3cm},clip]{img/vs_gp_time}
 \end{figure}
 }
 
-TTP consistently performs better than GP in terms of execution time. For a low
-number of partitions, GP needs to exchange slightly less data between workers.
-This is due to the fact that TTP emits not only 3-partitions but instead both
-2-partitions and 3$^\prime$-partitions. This strategy might seem sub-optimal
-when one is working with a few partitions but proves to be very good when
-working with large graphs that need to be split in many partitions, which is the
-primary focus with this kind of algorithm anyway.
+TTP consistently performs better than GP in terms of execution time. Let's look
+at the amount of shuffled data:
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth,trim={0 2.8cm 0 3cm},clip]{img/vs_gp_data}
+\end{figure}
+
+For a low number of partitions, GP needs to exchange slightly less data between
+workers. This is due to the fact that TTP emits not only 3-partitions but
+instead both 2-partitions and 3$^\prime$-partitions. This strategy might seem
+sub-optimal when one is working with a few partitions but proves to be very good
+when working with large graphs that need to be split in many partitions, which
+is the primary focus with this kind of algorithm anyway.
 
 \section{Conclusions}
 We started by explaining how the Graph Partition (GP) algorithm counts triangles
